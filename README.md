@@ -31,6 +31,27 @@ docker run --rm --gpus all -p 8000:8000 \
 ```
 Change the final tag to `:tiny` to deploy Tiny. See [docker/docker-compose.example.yml](./docker/docker-compose.example.yml). First startup downloads weights through the HF SDK. During loading, `/healthz` reports `loading` and synthesis returns 503; loading failure logs the exception and exits. Mount the cache to avoid repeated downloads. Offline deployment uses `HF_HUB_OFFLINE=1` with a populated cache, or a separately mounted checkpoint and `MING3_MODEL`. Image builds never download model weights.
 
+## Experimental Tiny weight quantization
+
+Set `MING3_QUANTIZATION=int8` or `int4` on the `:tiny` image; default is `none`. This is an adapter extension, not an upstream-validated quantization scheme. It is not supported by the `:0.5b` image.
+
+```bash
+docker run --rm --gpus all -p 8000:8000 \
+  -e MING3_QUANTIZATION=int4 \
+  -v "$PWD/voices:/voices:ro" -v "$PWD/cache:/root/.cache" \
+  ghcr.io/openttsgroup/ming3-tts-open-tts:tiny
+```
+
+- Convert routed/shared expert MLP projections in the 23 MoE blocks after upstream loads weights on CPU, **before** it moves the model to CUDA. The full BF16 model is never first copied to the GPU on this path.
+- Symmetric groupwise weight quantization uses groups of 64. INT4 packs two values per byte; INT8 stores one byte per value, plus group scales. INT4 here is not NF4.
+- Routers, embeddings, attention, audio encoder/decoder, DiT and FP32 numeric state retain their original precision. `MING3_DTYPE=bfloat16` remains the floating-point compute dtype; `/healthz.quantization` separately reports expert storage mode.
+- Each active expert projection is dequantized on demand and evaluated with ordinary floating-point linear operations. Dequantized weights are not cached. This saves storage; it is **not an optimized low-bit compute kernel**. It can be slower, and INT4 especially needs audio-quality evaluation.
+- No bitsandbytes/torchao dependency, upstream edits, or checkpoint rewrites. Unlike Fish's on-disk quantization cache, this implementation reconverts on CPU at every startup. Startup is slower and host RAM must still accommodate the full floating-point model and loading overhead.
+
+For a 12GB RTX 4070 Ti, INT4 offers more storage headroom than INT8, but **neither loading nor synthesis within 12GB has been verified or guaranteed**. Unquantized modules, activations, CUDA workspaces and temporary dequantized tensors also consume VRAM. Logged expert-storage savings are not total peak VRAM; validate with representative text, reference audio and tasks.
+
+CPU unit cases require an existing torch environment but no model weights or GPU: `python -m unittest discover -s tests`. They cover signed packing, zero weights, nonaligned dimensions, error bounds, module selection and loader restoration. Per the request not to run the project, only static syntax checks were performed; these tests and quantized inference were not executed.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -40,6 +61,7 @@ Change the final tag to `:tiny` to deploy Tiny. See [docker/docker-compose.examp
 | `MING3_DEVICE` | `auto` | auto/cuda; cpu is accepted by settings but fails loading explicitly. No CPU support is claimed. |
 | `MING3_CUDA_INDEX` | `0` | Visible GPU index, 0..255. |
 | `MING3_DTYPE` | `bfloat16` | Only bfloat16 is supported by the public upstream runtime. |
+| `MING3_QUANTIZATION` | `none` | Experimental Tiny MoE weight storage: none / int8 / int4; CUDA and :tiny only, other combinations fail. |
 | `MING3_TEXT_NORMALIZATION` | `false` | Enable upstream FST normalization; images include pynini. |
 | `MING3_DEFAULT_LANGUAGE` | `Chinese` | Default ordinary clone language; choose from /languages. |
 | `MING3_DEFAULT_VOICE` | `灵小柔` | Built-in fallback for empty design instructions. |

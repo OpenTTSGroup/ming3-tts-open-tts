@@ -5,6 +5,7 @@ import logging
 import random
 import sys
 import tempfile
+from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ class TTSEngine:
         if not torch.cuda.is_bf16_supported():
             raise RuntimeError("Ming-3.0-tts requires bfloat16 GPU support")
         self.dtype_str = "bfloat16"
+        self.quantization = settings.ming3_quantization
         if settings.ming3_default_voice not in BUILTIN_VOICES:
             raise ValueError("MING3_DEFAULT_VOICE is not in the built-in catalog")
         path = Path(settings.ming3_model).expanduser()
@@ -44,10 +46,15 @@ class TTSEngine:
             path = Path(snapshot_download(repo_id=settings.ming3_model, revision=settings.ming3_revision))
         if settings.image_variant == "tiny":
             from ming_tiny import MingTinyTTS
-            self.model = MingTinyTTS.from_pretrained(
-                str(path), device=self.device, dtype="bf16",
-                text_normalization=settings.ming3_text_normalization,
-            )
+            loading = nullcontext()
+            if self.quantization != "none":
+                from app.quantization import quantized_tiny_loading
+                loading = quantized_tiny_loading(self.quantization)
+            with loading:
+                self.model = MingTinyTTS.from_pretrained(
+                    str(path), device=self.device, dtype="bf16", moe_backend="loop",
+                    text_normalization=settings.ming3_text_normalization,
+                )
         else:
             from ming_tts import MingTTS
             self.model = MingTTS(str(path), device=self.device,

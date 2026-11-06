@@ -33,7 +33,10 @@ class HealthResponse(BaseModel):
     sample_rate: int = Field(ge=0, description="Native output rate; zero while loading.")
     capabilities: Capabilities = Field(description="API capabilities.")
     device: str | None = Field(None, description="Actual device.")
-    dtype: str | None = Field(None, description="Actual model dtype.")
+    dtype: str | None = Field(None, description="Floating-point compute dtype; quantization reports packed expert storage.")
+    quantization: Literal["none", "int8", "int4"] = Field(
+        "none", description="MoE expert weight storage; floating-point computation remains bfloat16.",
+    )
     concurrency: ConcurrencySnapshot | None = Field(None, description="Queue status.")
 
 

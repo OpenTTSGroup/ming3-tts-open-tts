@@ -128,6 +128,7 @@ async def healthz(request: Request) -> HealthResponse:
                           sample_rate=engine.sample_rate if engine else 0,
                           device=engine.device if engine else None,
                           dtype=engine.dtype_str if engine else None,
+                          quantization=engine.quantization if engine else request.app.state.settings.ming3_quantization,
                           capabilities=CAPABILITIES,
                           concurrency=request.app.state.limiter.snapshot())
 

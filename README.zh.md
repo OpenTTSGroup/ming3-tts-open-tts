@@ -31,6 +31,27 @@ docker run --rm --gpus all -p 8000:8000 \
 ```
 将最后一行 tag 改为 `:tiny` 即部署 Tiny。Compose 示例见 [docker/docker-compose.example.yml](./docker/docker-compose.example.yml)。首次启动由 HF SDK 自动下载权重；下载期间 `/healthz` 返回 `loading`，合成返回 503；失败会记录异常并退出。挂载缓存避免重复下载。离线部署用 `HF_HUB_OFFLINE=1` 与已有缓存，或额外挂载本地模型目录并设置 `MING3_MODEL`。构建镜像不下载权重。
 
+## Tiny 实验性权重量化
+
+`:tiny` 镜像可设置 `MING3_QUANTIZATION=int8` 或 `int4`，默认 `none`。这是适配层新增的功能，不是上游官方验证的量化方案；不适用于 `:0.5b` 镜像。
+
+```bash
+docker run --rm --gpus all -p 8000:8000 \
+  -e MING3_QUANTIZATION=int4 \
+  -v "$PWD/voices:/voices:ro" -v "$PWD/cache:/root/.cache" \
+  ghcr.io/openttsgroup/ming3-tts-open-tts:tiny
+```
+
+- 在上游 CPU 权重加载完成、整模型转入 CUDA **之前**转换 23 个 MoE 层的路由专家及共享专家 MLP 投影，避免先把完整 BF16 模型塞进 GPU。
+- 使用分组大小 64 的对称权重量化；INT4 每字节打包两个值，INT8 每值一个字节，另存分组 scale。这里的 INT4 不是 NF4。
+- 路由器、嵌入、注意力、音频编码器／解码器、DiT 和 FP32 数值状态保留原精度。`MING3_DTYPE=bfloat16` 仍表示浮点计算精度；`/healthz.quantization` 单独报告专家权重存储模式。
+- 每次只解量化正在执行的一个专家投影，随后使用普通浮点 linear 计算，不缓存全部解量化权重。这是**节省显存的实现，不是低比特加速内核**，可能更慢，INT4 尤其需要评估音质。
+- 不增加 bitsandbytes/torchao 等依赖，不修改上游子模块，不写回原始 checkpoint。与 Fish 的磁盘量化缓存不同，本实现每次启动在 CPU 上重新转换，因此启动更慢，仍需足够主机内存容纳完整浮点模型和加载开销。
+
+对 12GB RTX 4070 Ti，INT4 是比 INT8 更有余量的尝试方向，但**尚未实测，不保证可在 12GB 内完成加载和合成**。未量化模块、激活、CUDA 工作区和临时解量化张量仍占显存。启动日志报告的专家存储压缩量不是整机峰值显存；需用实际文本、参考音频和目标任务验证。
+
+提供了无需模型权重或 GPU 的 CPU 单元测试（需要已有 torch 环境）：`python -m unittest discover -s tests`，覆盖打包符号、零权重、非整组维度、误差边界、模块筛选与加载钩子恢复。本次遵照不运行项目的要求，仅做静态语法检查，未执行这些测试或量化推理。
+
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -40,6 +61,7 @@ docker run --rm --gpus all -p 8000:8000 \
 | `MING3_DEVICE` | `auto` | auto/cuda；配置接受 cpu，但加载时明确报错，不宣称支持 CPU。 |
 | `MING3_CUDA_INDEX` | `0` | 容器可见 GPU 编号，0..255。 |
 | `MING3_DTYPE` | `bfloat16` | 上游公开运行接口仅支持 bfloat16。 |
+| `MING3_QUANTIZATION` | `none` | 实验性 Tiny MoE 专家权重量化：none / int8 / int4；仅 CUDA、仅 :tiny，其他组合报错。 |
 | `MING3_TEXT_NORMALIZATION` | `false` | 启用上游 FST 文本归一化；镜像包含 pynini。 |
 | `MING3_DEFAULT_LANGUAGE` | `Chinese` | 普通克隆默认语言，取值见 /languages。 |
 | `MING3_DEFAULT_VOICE` | `灵小柔` | 声音设计描述为空时使用的内置音色。 |

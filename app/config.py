@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     ming3_device: Literal["auto", "cuda", "cpu"] = "auto"
     ming3_cuda_index: int = Field(0, ge=0, le=255, description="CUDA device index.")
     ming3_dtype: Literal["bfloat16"] = "bfloat16"
+    ming3_quantization: Literal["none", "int8", "int4"] = Field(
+        "none", description="Experimental Tiny-only MoE weight storage quantization; CUDA only.",
+    )
     ming3_text_normalization: bool = False
     ming3_default_language: Literal["Chinese", "English", "German", "Spanish", "French", "Korean", "Japanese"] = "Chinese"
     ming3_default_voice: str = "灵小柔"
@@ -49,6 +52,15 @@ class Settings(BaseSettings):
     queue_timeout: float = Field(0, ge=0, le=86400, allow_inf_nan=False, description="Queue timeout seconds; zero disables it.")
     max_audio_bytes: int = Field(20 * 1024 * 1024, ge=1, le=2147483647, description="Reference upload size limit.")
     cors_enabled: bool = False
+
+    @model_validator(mode="after")
+    def validate_quantization(self) -> Settings:
+        if self.ming3_quantization != "none":
+            if self.image_variant != "tiny":
+                raise ValueError("MING3_QUANTIZATION requires the :tiny image")
+            if self.ming3_device == "cpu":
+                raise ValueError("MING3_QUANTIZATION requires CUDA")
+        return self
 
     @property
     def image_variant(self) -> Literal["0.5b", "tiny"]:

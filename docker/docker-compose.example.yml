@@ -11,6 +11,8 @@ services:
       - ../cache:/root/.cache
     environment:
       # For Tiny, change the image tag to :tiny. The image sets variant/model.
+      # Experimental MoE weight quantization (:tiny only; default none):
+      # MING3_QUANTIZATION: "int4"
       # Optional local checkpoint override (mount it separately):
       # MING3_MODEL: "/models/my-checkpoint"
       LOG_LEVEL: "info"
