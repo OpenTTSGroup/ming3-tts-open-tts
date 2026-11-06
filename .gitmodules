@@ -1,0 +1,3 @@
+[submodule "engine"]
+	path = engine
+	url = https://github.com/inclusionAI/Ming-3.0-tts.git

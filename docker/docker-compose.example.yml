@@ -1,0 +1,24 @@
+# Paths are relative to this file. Run from the repository root:
+# docker compose -f docker/docker-compose.example.yml up -d
+services:
+  ming3:
+    image: ghcr.io/openttsgroup/ming3-tts-open-tts:0.5b
+    container_name: ming3-tts
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../voices:/voices:ro
+      - ../cache:/root/.cache
+    environment:
+      # For Tiny, change the image tag to :tiny. The image sets variant/model.
+      # Optional local checkpoint override (mount it separately):
+      # MING3_MODEL: "/models/my-checkpoint"
+      LOG_LEVEL: "info"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped

@@ -1,0 +1,4 @@
+# Shared extras; upstream requirements remain isolated by variant.
+hf_transfer>=0.1.9
+# Linux/Python 3.10 wheel; required only when MING3_TEXT_NORMALIZATION=true.
+pynini==2.1.6
