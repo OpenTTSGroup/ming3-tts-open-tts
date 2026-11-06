@@ -48,8 +48,13 @@ ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 \
     HF_HOME=/root/.cache/huggingface HF_HUB_ENABLE_HF_TRANSFER=1 \
     PYTHONPATH=/opt/api/engine PATH=/opt/venv/bin:$PATH \
     MING3_MODEL=inclusionAI/Ming-3.0-tts-${MING3_VARIANT}
+# Tiny's FLA/Triton compiles host-side driver helpers and launchers at
+# runtime, even without quantization. Builder-only tools are insufficient.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.10 ffmpeg libsndfile1 libgomp1 ca-certificates \
+    && if [ "$MING3_VARIANT" = "tiny" ]; then \
+        apt-get install -y --no-install-recommends gcc libc6-dev python3.10-dev; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /opt/api

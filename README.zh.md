@@ -31,6 +31,8 @@ docker run --rm --gpus all -p 8000:8000 \
 ```
 将最后一行 tag 改为 `:tiny` 即部署 Tiny。Compose 示例见 [docker/docker-compose.example.yml](./docker/docker-compose.example.yml)。首次启动由 HF SDK 自动下载权重；下载期间 `/healthz` 返回 `loading`，合成返回 503；失败会记录异常并退出。挂载缓存避免重复下载。离线部署用 `HF_HUB_OFFLINE=1` 与已有缓存，或额外挂载本地模型目录并设置 `MING3_MODEL`。构建镜像不下载权重。
 
+Tiny 运行镜像保留 `gcc`、`libc6-dev` 和 `python3.10-dev`，供 FLA/Triton 按需编译主机侧 CUDA 驱动辅助模块及启动器；无论是否启用量化都需要这些依赖。旧镜像若报 `Failed to find C compiler`，需用更新后的 Dockerfile 重新构建；仅设置 `CC` 不会补齐编译器与头文件。
+
 ## Tiny 实验性权重量化
 
 `:tiny` 镜像可设置 `MING3_QUANTIZATION=int8` 或 `int4`，默认 `none`。这是适配层新增的功能，不是上游官方验证的量化方案；不适用于 `:0.5b` 镜像。

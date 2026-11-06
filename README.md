@@ -31,6 +31,8 @@ docker run --rm --gpus all -p 8000:8000 \
 ```
 Change the final tag to `:tiny` to deploy Tiny. See [docker/docker-compose.example.yml](./docker/docker-compose.example.yml). First startup downloads weights through the HF SDK. During loading, `/healthz` reports `loading` and synthesis returns 503; loading failure logs the exception and exits. Mount the cache to avoid repeated downloads. Offline deployment uses `HF_HUB_OFFLINE=1` with a populated cache, or a separately mounted checkpoint and `MING3_MODEL`. Image builds never download model weights.
 
+Tiny retains `gcc`, `libc6-dev`, and `python3.10-dev` in the runtime image because FLA/Triton compiles host-side CUDA driver helpers and launchers on demand. This applies to both BF16 and quantized inference. An older image failing with `Failed to find C compiler` must be rebuilt with the updated Dockerfile; setting `CC` alone does not install the missing compiler or headers.
+
 ## Experimental Tiny weight quantization
 
 Set `MING3_QUANTIZATION=int8` or `int4` on the `:tiny` image; default is `none`. This is an adapter extension, not an upstream-validated quantization scheme. It is not supported by the `:0.5b` image.
